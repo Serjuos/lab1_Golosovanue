@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Результаты опроса</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; }
+    h1 { color: #2d3748; }
+    .nav { margin-bottom: 20px; }
+    .nav a { color: #4299e1; text-decoration: none; font-size: 16px; }
+    .nav a:hover { text-decoration: underline; }
+    
+    /* Статистика */
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); 
+             gap: 16px; margin: 24px 0; }
+    .stat-card { background: #f7fafc; padding: 20px; border-radius: 8px; 
+                 border-left: 4px solid #4299e1; }
+    .stat-card h3 { margin: 0 0 8px 0; color: #718096; font-size: 14px; text-transform: uppercase; }
+    .stat-card .value { font-size: 32px; font-weight: bold; color: #2d3748; }
+    .stat-card .label { font-size: 14px; color: #718096; margin-top: 4px; }
+    
+    /* Поиск */
+    .search-box { margin: 20px 0; }
+    .search-box input { width: 100%; padding: 12px; border: 2px solid #e2e8f0; 
+                        border-radius: 8px; font-size: 16px; }
+    .search-box input:focus { outline: none; border-color: #4299e1; }
+    
+    /* Таблица */
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { padding: 14px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+    th { background: #f7fafc; font-weight: 600; color: #2d3748; }
+    tr:hover { background: #f7fafc; }
+    .framework-badge { display: inline-block; padding: 4px 12px; background: #4299e1; 
+                       color: white; border-radius: 12px; font-size: 14px; }
+    
+    .empty { color: #718096; font-style: italic; margin-top: 20px; text-align: center; padding: 40px; }
+    .loading { text-align: center; padding: 40px; color: #718096; }
+  </style>
+</head>
+<body>
+  <div class="nav">
+    <a href="index.html">← Вернуться к опросу</a>
+  </div>
+  
+  <h1>📊 Результаты опроса</h1>
+  
+  <div id="loading" class="loading">Загрузка данных...</div>
+  
+  <div id="content" style="display: none;">
+    <!-- Статистика -->
+    <div class="stats" id="stats"></div>
+    
+    <!-- Поиск -->
+    <div class="search-box">
+      <input type="text" id="search" placeholder="🔍 Поиск по имени участника...">
+    </div>
+    
+    <!-- Таблица голосов -->
+    <div id="table-container"></div>
+  </div>
+
+  <script>
+    const API = '/api';
+    let allVotes = [];
+
+    async function loadData() {
+      try {
+        // Загружаем историю голосов и результаты параллельно
+        const [historyRes, resultsRes] = await Promise.all([
+          fetch(`${API}/history`),
+          fetch(`${API}/results`)
+        ]);
+        
+        allVotes = await historyRes.json();
+        const results = await resultsRes.json();
+        
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('content').style.display = 'block';
+        
+        renderStats(results, allVotes);
+        renderTable(allVotes);
+      } catch (e) {
+        document.getElementById('loading').innerHTML = 'Ошибка загрузки данных';
+        console.error(e);
+      }
+    }
+
+    function renderStats(results, votes) {
+      const totalVotes = results.total;
+      const uniqueUsers = new Set(votes.map(v => v.user_name)).size;
+      const topFramework = results.items[0];
+      
+      const statsHtml = `
+        <div class="stat-card">
+          <h3>Всего голосов</h3>
+          <div class="value">${totalVotes}</div>
+          <div class="label">участников опроса</div>
+        </div>
+        <div class="stat-card">
+          <h3>Уникальных участников</h3>
+          <div class="value">${uniqueUsers}</div>
+          <div class="label">человек проголосовало</div>
+        </div>
+        <div class="stat-card">
+          <h3>Лидер опроса</h3>
+          <div class="value" style="font-size: 24px;">${topFramework ? topFramework.name : '—'}</div>
+          <div class="label">${topFramework ? `${topFramework.votes} голосов (${topFramework.percent}%)` : 'нет данных'}</div>
+        </div>
+      `;
+      
+      document.getElementById('stats').innerHTML = statsHtml;
+    }
+
+    function renderTable(votes) {
+      if (votes.length === 0) {
+        document.getElementById('table-container').innerHTML = 
+          '<p class="empty">Пока никто не голосовал. Будь первым!</p>';
+        return;
+      }
+      
+      let html = `
+        <table>
+          <thead>
+            <tr>
+              <th>Имя участника</th>
+              <th>Выбранный фреймворк</th>
+              <th>Дата и время</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+      
+      votes.forEach(v => {
+        const date = new Date(v.voted_at).toLocaleString('ru-RU', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+        html += `
+          <tr>
+            <td><strong>${v.user_name}</strong></td>
+            <td><span class="framework-badge">${v.framework}</span></td>
+            <td>${date}</td>
+          </tr>
+        `;
+      });
+      
+      html += '</tbody></table>';
+      document.getElementById('table-container').innerHTML = html;
+    }
+
+    // Поиск по имени
+    document.getElementById('search').addEventListener('input', (e) => {
+      const query = e.target.value.toLowerCase();
+      const filtered = allVotes.filter(v => 
+        v.user_name.toLowerCase().includes(query)
+      );
+      renderTable(filtered);
+    });
+
+    loadData();
+  </script>
+</body>
+</html>
